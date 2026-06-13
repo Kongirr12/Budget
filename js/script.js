@@ -118,29 +118,53 @@ document.addEventListener('DOMContentLoaded', function() {
   };
 
   updateNavbar(); 
-  loadProjectSummary(); 
+  function loadProjectSummary() {
+  loadingStart();
+  const tokenToSend = isLoggedIn ? authToken : null;
 
-  if (isLoggedIn) {
-    loadProjects();
-    showSection('public'); 
-  } else {
-    showSection('public'); 
-  }
+  callAPI('getProjectSummary', { token: tokenToSend })
+    .then(function(res) { 
+      loadingEnd();
+      if (res.success) {
+        summaryData = res.data; 
 
-  if (document.getElementById('modalUploadFiles')) {
-    uploadModal = new bootstrap.Modal(document.getElementById('modalUploadFiles'));
-    setupDropzones(); 
-    
-    document.getElementById('btnUploadEdit').addEventListener('click', function() {
-      setUploadMode('edit');
-    });
-    document.getElementById('btnUploadCancel').addEventListener('click', function() {
-      cancelUploadChanges();
-    });
-    document.getElementById('btnUploadSave').addEventListener('click', function() {
-      saveFileChangesClient();
-    });
-  }
+        // [แก้ไข] เพิ่มไม้กันหมา (Null Check) ป้องกัน Error
+        const filterSelect = document.getElementById('filterProject');
+        const currentProjectVal = filterSelect ? filterSelect.value : ''; 
+        const filterStatusSelect = document.getElementById('filterStatus');
+        const currentStatusVal = filterStatusSelect ? filterStatusSelect.value : ''; 
+
+        if (filterSelect) {
+          filterSelect.innerHTML = '<option value="">-- แสดงทั้งหมด --</option>';
+          summaryData.forEach(function(item) { 
+            const opt = document.createElement('option');
+            opt.value = item.code;
+            opt.textContent = item.code + ' - ' + item.name; 
+            filterSelect.appendChild(opt);
+          });
+          filterSelect.value = currentProjectVal;
+        }
+        
+        if (filterStatusSelect) {
+          filterStatusSelect.value = currentStatusVal;
+        }
+
+        function filterSummaryTable() {
+  // [แก้ไข] เพิ่มไม้กันหมา (Null Check)
+  const filterProjectEl = document.getElementById('filterProject');
+  const filterStatusEl = document.getElementById('filterStatus');
+  
+  const selectedCode = filterProjectEl ? filterProjectEl.value : '';
+  const selectedStatus = filterStatusEl ? filterStatusEl.value : '';
+  
+  let filteredData = summaryData;
+
+  if (selectedCode) filteredData = filteredData.filter(function(item) { return item.code === selectedCode; });
+  if (selectedStatus) filteredData = filteredData.filter(function(item) { return item.status === selectedStatus; });
+
+  renderSummaryTable(filteredData);
+  renderSummaryDashboard(filteredData);
+}
 
   // ล็อกอินเข้าระบบ
   document.getElementById('loginForm').addEventListener('submit', function(e) { 
@@ -332,7 +356,10 @@ function loadProjects() {
 }
 
 function onProjectChange() {
-  const code = document.getElementById('project').value;
+  const projectEl = document.getElementById('project');
+  if (!projectEl) return; // [แก้ไข] ถ้าหาช่องเลือกโครงการไม่เจอ ให้ออกจากการทำงานไปเลย จะได้ไม่ Error
+
+  const code = projectEl.value;
   const project = projects.find(function(p) { return p.code === code; }); 
   const projectData = summaryData.find(function(p) { return p.code === code; });
 
@@ -368,20 +395,21 @@ function onProjectChange() {
     }
     
     if (budget === 0) {
-      amountInput.value = 0;
-      amountInput.disabled = true;
-      amountLabel.innerHTML = '<i class="fa-solid fa-file-lines me-1 text-info"></i> บันทึกรายงาน (ไม่ใช้งบประมาณ)';
-      submitButton.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> บันทึกรายงาน';
-      submitButton.classList.remove('btn-primary');
-      submitButton.classList.add('btn-info');
+      if(amountInput) { amountInput.value = 0; amountInput.disabled = true; }
+      if(amountLabel) amountLabel.innerHTML = '<i class="fa-solid fa-file-lines me-1 text-info"></i> บันทึกรายงาน (ไม่ใช้งบประมาณ)';
+      if(submitButton) {
+        submitButton.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> บันทึกรายงาน';
+        submitButton.classList.remove('btn-primary');
+        submitButton.classList.add('btn-info');
+      }
     } else {
-      amountInput.value = ''; 
-      amountInput.disabled = false;
-      amountInput.placeholder = 'ระบุจำนวนเงินที่ต้องการเบิก';
-      amountLabel.innerHTML = '<i class="fa-solid fa-money-bill-wave me-1 text-success"></i> จำนวนเงินที่ต้องการเบิก';
-      submitButton.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> บันทึกการเบิกเงิน';
-      submitButton.classList.add('btn-primary');
-      submitButton.classList.remove('btn-info');
+      if(amountInput) { amountInput.value = ''; amountInput.disabled = false; amountInput.placeholder = 'ระบุจำนวนเงินที่ต้องการเบิก'; }
+      if(amountLabel) amountLabel.innerHTML = '<i class="fa-solid fa-money-bill-wave me-1 text-success"></i> จำนวนเงินที่ต้องการเบิก';
+      if(submitButton) {
+        submitButton.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> บันทึกการเบิกเงิน';
+        submitButton.classList.add('btn-primary');
+        submitButton.classList.remove('btn-info');
+      }
     }
 
   } else {
@@ -392,13 +420,13 @@ function onProjectChange() {
     balanceAmount.textContent = "-";
     sequenceCount.textContent = "-";
     
-    amountInput.value = '';
-    amountInput.disabled = false;
-    amountInput.placeholder = 'ระบุจำนวนเงินที่ต้องการเบิก';
-    amountLabel.innerHTML = '<i class="fa-solid fa-money-bill-wave me-1 text-success"></i> จำนวนเงินที่ต้องการเบิก';
-    submitButton.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> บันทึกการเบิกเงิน';
-    submitButton.classList.add('btn-primary');
-    submitButton.classList.remove('btn-info');
+    if(amountInput) { amountInput.value = ''; amountInput.disabled = false; amountInput.placeholder = 'ระบุจำนวนเงินที่ต้องการเบิก'; }
+    if(amountLabel) amountLabel.innerHTML = '<i class="fa-solid fa-money-bill-wave me-1 text-success"></i> จำนวนเงินที่ต้องการเบิก';
+    if(submitButton) {
+      submitButton.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> บันทึกการเบิกเงิน';
+      submitButton.classList.add('btn-primary');
+      submitButton.classList.remove('btn-info');
+    }
   }
 }
 
