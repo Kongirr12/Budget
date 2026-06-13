@@ -64,7 +64,7 @@
       padding-top: 1.5rem;
     }
 
-    h2, h5, .h5, strong {
+    h2, h5, .h5,  {
       font-weight: 500;
     }
 
@@ -564,9 +564,13 @@
     <div class="container d-flex flex-column align-items-center">
       <!-- ฝั่งซ้าย (Copyright) -->
       <div class="footer-left mb-1">
-        <strong>Copyright &copy; <?= new Date().getFullYear() ?> ผู้พัฒนาโดย:
-          <a href="#" class="footer-link" target="_blank">...</a>
-        </strong>
+        <strong>Copyright &copy; <span id="currentYear"></span> ผู้พัฒนาโดย:
+  <a href="#" class="footer-link" target="_blank">...</a>
+</strong>
+
+<script>
+  document.getElementById("currentYear").textContent = new Date().getFullYear();
+</script>
       </div>
 
       <!-- ฝั่งขวา (Developer) -->
