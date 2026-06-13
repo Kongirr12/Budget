@@ -1,7 +1,8 @@
+
 // ==============================
 // ตัวแปรหลัก
 // ==============================
-// ⚠️ นำ URL ของ Web App ที่เพิ่ง Deploy ใหม่มาวางตรงนี้
+// ⚠️ อย่าลืมนำ URL ของ Web App ที่คุณครู Deploy มาวางตรงนี้แทนนะครับ
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx5R3HaXBNjOLzQb-Wdo69gNJnQYh0eux5ONsJKSbCHlIuafdbRijGxkjSgQx4EKXYezw/exec"; 
 
 var summaryData = []; 
@@ -23,7 +24,7 @@ var stagedUploads = [];
 var stagedDeletions = []; 
 
 // ==============================
-// 🚀 ฟังก์ชันผู้ช่วยสำหรับคุยกับ API (ตัวแทน google.script.run)
+// 🚀 ฟังก์ชันผู้ช่วยสำหรับเรียก API
 // ==============================
 function callAPI(action, params = {}) {
   params.action = action;
@@ -31,7 +32,7 @@ function callAPI(action, params = {}) {
     method: 'POST',
     body: JSON.stringify(params),
     headers: {
-      "Content-Type": "text/plain;charset=utf-8" // สำคัญ: เลี่ยงปัญหา CORS Blocked
+      "Content-Type": "text/plain;charset=utf-8"
     }
   })
   .then(response => {
@@ -75,7 +76,6 @@ function onFailure(error) {
 
   let errorName = "Error";
   let errorMessage = String(error.message || "การเชื่อมต่อล้มเหลว หรือ Server ไม่ตอบสนอง");
-
   let errorText = '[' + errorName + '] ' + errorMessage + '. กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแลระบบ';
 
   if (errorMessage.includes("Invalid or expired token")) {
@@ -104,7 +104,7 @@ function forceLogout() {
   localStorage.removeItem('fullName');
   localStorage.removeItem('userRole');
   localStorage.removeItem('authToken'); 
-  window.location.reload(); // รีโหลดหน้าเว็บเพื่อให้ GitHub ล้างสถานะ
+  window.location.reload(); 
 }
 
 // ==============================
@@ -118,95 +118,64 @@ document.addEventListener('DOMContentLoaded', function() {
   };
 
   updateNavbar(); 
-  function loadProjectSummary() {
-  loadingStart();
-  const tokenToSend = isLoggedIn ? authToken : null;
+  loadProjectSummary(); 
 
-  callAPI('getProjectSummary', { token: tokenToSend })
-    .then(function(res) { 
-      loadingEnd();
-      if (res.success) {
-        summaryData = res.data; 
+  if (isLoggedIn) {
+    loadProjects();
+    showSection('public'); 
+  } else {
+    showSection('public'); 
+  }
 
-        // [แก้ไข] เพิ่มไม้กันหมา (Null Check) ป้องกัน Error
-        const filterSelect = document.getElementById('filterProject');
-        const currentProjectVal = filterSelect ? filterSelect.value : ''; 
-        const filterStatusSelect = document.getElementById('filterStatus');
-        const currentStatusVal = filterStatusSelect ? filterStatusSelect.value : ''; 
+  if (document.getElementById('modalUploadFiles')) {
+    uploadModal = new bootstrap.Modal(document.getElementById('modalUploadFiles'));
+    setupDropzones(); 
+    
+    document.getElementById('btnUploadEdit').addEventListener('click', function() { setUploadMode('edit'); });
+    document.getElementById('btnUploadCancel').addEventListener('click', function() { cancelUploadChanges(); });
+    document.getElementById('btnUploadSave').addEventListener('click', function() { saveFileChangesClient(); });
+  }
 
-        if (filterSelect) {
-          filterSelect.innerHTML = '<option value="">-- แสดงทั้งหมด --</option>';
-          summaryData.forEach(function(item) { 
-            const opt = document.createElement('option');
-            opt.value = item.code;
-            opt.textContent = item.code + ' - ' + item.name; 
-            filterSelect.appendChild(opt);
-          });
-          filterSelect.value = currentProjectVal;
-        }
-        
-        if (filterStatusSelect) {
-          filterStatusSelect.value = currentStatusVal;
-        }
+  const loginFormEl = document.getElementById('loginForm');
+  if (loginFormEl) {
+    loginFormEl.addEventListener('submit', function(e) { 
+      e.preventDefault(); 
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
 
-        function filterSummaryTable() {
-  // [แก้ไข] เพิ่มไม้กันหมา (Null Check)
-  const filterProjectEl = document.getElementById('filterProject');
-  const filterStatusEl = document.getElementById('filterStatus');
-  
-  const selectedCode = filterProjectEl ? filterProjectEl.value : '';
-  const selectedStatus = filterStatusEl ? filterStatusEl.value : '';
-  
-  let filteredData = summaryData;
+      if (!username || !password) {
+        Swal.fire('ผิดพลาด', 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน', 'error');
+        return;
+      }
 
-  if (selectedCode) filteredData = filteredData.filter(function(item) { return item.code === selectedCode; });
-  if (selectedStatus) filteredData = filteredData.filter(function(item) { return item.status === selectedStatus; });
+      loadingStart(); 
+      callAPI('authenticateUser', { username: username, password: password })
+        .then(function(response) { 
+          loadingEnd(); 
+          if (response.success) {
+            isLoggedIn = true;
+            fullName = response.fullName;
+            userRole = response.role;
+            authToken = response.token; 
+            localStorage.setItem('isLoggedIn', 'true');
+            localStorage.setItem('fullName', fullName);
+            localStorage.setItem('userRole', userRole);
+            localStorage.setItem('authToken', authToken); 
 
-  renderSummaryTable(filteredData);
-  renderSummaryDashboard(filteredData);
-}
-
-  // ล็อกอินเข้าระบบ
-  document.getElementById('loginForm').addEventListener('submit', function(e) { 
-    e.preventDefault(); 
-
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-
-    if (!username || !password) {
-      Swal.fire('ผิดพลาด', 'กรุณากรอกชื่อผู้ใช้และรหัสผ่าน', 'error');
-      return;
-    }
-
-    loadingStart(); 
-    callAPI('authenticateUser', { username: username, password: password })
-      .then(function(response) { 
-        loadingEnd(); 
-
-        if (response.success) {
-          isLoggedIn = true;
-          fullName = response.fullName;
-          userRole = response.role;
-          authToken = response.token; 
-          localStorage.setItem('isLoggedIn', 'true');
-          localStorage.setItem('fullName', fullName);
-          localStorage.setItem('userRole', userRole);
-          localStorage.setItem('authToken', authToken); 
-
-          updateNavbar(); 
-          showSection('public');
-          loadProjectSummary(); 
-          loadProjects(); 
-          loadDataTransactions(); 
-          Swal.fire('สำเร็จ', response.message, 'success');
-
-          bootstrap.Modal.getInstance(document.getElementById('loginModal')).hide();
-        } else {
-          Swal.fire('ผิดพลาด', response.message, 'error');
-        }
-      })
-      .catch(onFailure);
-  });
+            updateNavbar(); 
+            showSection('public');
+            loadProjectSummary(); 
+            loadProjects(); 
+            loadDataTransactions(); 
+            Swal.fire('สำเร็จ', response.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('loginModal')).hide();
+          } else {
+            Swal.fire('ผิดพลาด', response.message, 'error');
+          }
+        })
+        .catch(onFailure);
+    });
+  }
 });
 
 function showSection(sectionId) {
@@ -221,9 +190,7 @@ function showSection(sectionId) {
   });
 
   const el = document.getElementById(sectionId);
-  if (el) {
-    el.classList.add('active');
-  }
+  if (el) { el.classList.add('active'); }
   window.scrollTo(0, 0);
 
   document.querySelectorAll('#navLinks .nav-link').forEach(function(link) { 
@@ -238,6 +205,7 @@ function updateNavbar() {
   const navLinks = document.getElementById('navLinks');
   const userInfo = document.getElementById('userInfo');
   const logoutBtn = document.getElementById('logoutBtn');
+  if (!navLinks) return;
 
   const navProjectTab = document.getElementById('nav-project-tab');
   const navUserTab = document.getElementById('nav-user-tab');
@@ -251,8 +219,8 @@ function updateNavbar() {
   const btnImportProject = document.getElementById('btn-import-project');
 
   if (isLoggedIn) {
-    userInfo.textContent = 'สวัสดี, ' + fullName + ' (' + userRole + ')'; 
-    logoutBtn.style.display = 'inline-block';
+    if (userInfo) userInfo.textContent = 'สวัสดี, ' + fullName + ' (' + userRole + ')'; 
+    if (logoutBtn) logoutBtn.style.display = 'inline-block';
     
     navLinks.innerHTML =
         '<li class="nav-item"><a class="nav-link" href="#admin" onclick="showSection(\'admin\')"><i class="fa-solid fa-user-shield me-1"></i> ดำเนินการ</a></li>' +
@@ -297,8 +265,8 @@ function updateNavbar() {
     }
 
   } else {
-    userInfo.textContent = '';
-    logoutBtn.style.display = 'none';
+    if (userInfo) userInfo.textContent = '';
+    if (logoutBtn) logoutBtn.style.display = 'none';
     navLinks.innerHTML = '<li class="nav-item"><a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#loginModal"><i class="fa-solid fa-right-to-bracket me-1"></i> เข้าสู่ระบบ</a></li>'; 
     navLinks.classList.add('ms-auto');
     navLinks.classList.remove('me-auto');
@@ -316,21 +284,22 @@ function updateNavbar() {
   }
 }
 
-document.getElementById('logoutBtn').addEventListener('click', function() { 
-  Swal.fire({
-    title: 'ยืนยันการล็อกเอาท์',
-    text: 'คุณต้องการออกจากระบบใช่หรือไม่?',
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'ล็อกเอาท์',
-    cancelButtonText: 'ยกเลิก',
-    confirmButtonColor: 'var(--danger-color)'
-  }).then(function(result) { 
-    if (result.isConfirmed) {
-      forceLogout(); // เรียกใช้ฟังก์ชันล้างค่าและรีโหลดหน้า
-    }
+const logoutBtnEl = document.getElementById('logoutBtn');
+if (logoutBtnEl) {
+  logoutBtnEl.addEventListener('click', function() { 
+    Swal.fire({
+      title: 'ยืนยันการล็อกเอาท์',
+      text: 'คุณต้องการออกจากระบบใช่หรือไม่?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'ล็อกเอาท์',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: 'var(--danger-color)'
+    }).then(function(result) { 
+      if (result.isConfirmed) { forceLogout(); }
+    });
   });
-});
+}
 
 function loadProjects() {
   if (!isLoggedIn) return;
@@ -357,7 +326,7 @@ function loadProjects() {
 
 function onProjectChange() {
   const projectEl = document.getElementById('project');
-  if (!projectEl) return; // [แก้ไข] ถ้าหาช่องเลือกโครงการไม่เจอ ให้ออกจากการทำงานไปเลย จะได้ไม่ Error
+  if (!projectEl) return; 
 
   const code = projectEl.value;
   const project = projects.find(function(p) { return p.code === code; }); 
@@ -378,34 +347,34 @@ function onProjectChange() {
 
   if (project) {
     infoDiv.classList.remove('d-none');
-    infoName.textContent = project.name;
+    if (infoName) infoName.textContent = project.name;
     const budget = parseFloat(project.budget) || 0; 
-    infoBudget.textContent = budget.toLocaleString() + " บาท";
+    if (infoBudget) infoBudget.textContent = budget.toLocaleString() + " บาท";
     
     const ownerIds = _parseOwnerIds(project.owner);
     const ownerNames = ownerIds.map(getUserFullName).join(', ');
-    infoOwner.textContent = ownerNames || '(ไม่ได้ระบุ)';
+    if (infoOwner) infoOwner.textContent = ownerNames || '(ไม่ได้ระบุ)';
 
     if (projectData) {
-      balanceAmount.textContent = Number(projectData.balance).toLocaleString() + " บาท";
-      sequenceCount.textContent = projectData.txCount || "0";
+      if (balanceAmount) balanceAmount.textContent = Number(projectData.balance).toLocaleString() + " บาท";
+      if (sequenceCount) sequenceCount.textContent = projectData.txCount || "0";
     } else {
-      balanceAmount.textContent = budget.toLocaleString() + " บาท";
-      sequenceCount.textContent = "0";
+      if (balanceAmount) balanceAmount.textContent = budget.toLocaleString() + " บาท";
+      if (sequenceCount) sequenceCount.textContent = "0";
     }
     
     if (budget === 0) {
-      if(amountInput) { amountInput.value = 0; amountInput.disabled = true; }
-      if(amountLabel) amountLabel.innerHTML = '<i class="fa-solid fa-file-lines me-1 text-info"></i> บันทึกรายงาน (ไม่ใช้งบประมาณ)';
-      if(submitButton) {
+      if (amountInput) { amountInput.value = 0; amountInput.disabled = true; }
+      if (amountLabel) amountLabel.innerHTML = '<i class="fa-solid fa-file-lines me-1 text-info"></i> บันทึกรายงาน (ไม่ใช้งบประมาณ)';
+      if (submitButton) {
         submitButton.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> บันทึกรายงาน';
         submitButton.classList.remove('btn-primary');
         submitButton.classList.add('btn-info');
       }
     } else {
-      if(amountInput) { amountInput.value = ''; amountInput.disabled = false; amountInput.placeholder = 'ระบุจำนวนเงินที่ต้องการเบิก'; }
-      if(amountLabel) amountLabel.innerHTML = '<i class="fa-solid fa-money-bill-wave me-1 text-success"></i> จำนวนเงินที่ต้องการเบิก';
-      if(submitButton) {
+      if (amountInput) { amountInput.value = ''; amountInput.disabled = false; amountInput.placeholder = 'ระบุจำนวนเงินที่ต้องการเบิก'; }
+      if (amountLabel) amountLabel.innerHTML = '<i class="fa-solid fa-money-bill-wave me-1 text-success"></i> จำนวนเงินที่ต้องการเบิก';
+      if (submitButton) {
         submitButton.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> บันทึกการเบิกเงิน';
         submitButton.classList.add('btn-primary');
         submitButton.classList.remove('btn-info');
@@ -414,15 +383,15 @@ function onProjectChange() {
 
   } else {
     infoDiv.classList.add('d-none');
-    infoName.textContent = "-";
-    infoBudget.textContent = "-";
-    infoOwner.textContent = "-";
-    balanceAmount.textContent = "-";
-    sequenceCount.textContent = "-";
+    if (infoName) infoName.textContent = "-";
+    if (infoBudget) infoBudget.textContent = "-";
+    if (infoOwner) infoOwner.textContent = "-";
+    if (balanceAmount) balanceAmount.textContent = "-";
+    if (sequenceCount) sequenceCount.textContent = "-";
     
-    if(amountInput) { amountInput.value = ''; amountInput.disabled = false; amountInput.placeholder = 'ระบุจำนวนเงินที่ต้องการเบิก'; }
-    if(amountLabel) amountLabel.innerHTML = '<i class="fa-solid fa-money-bill-wave me-1 text-success"></i> จำนวนเงินที่ต้องการเบิก';
-    if(submitButton) {
+    if (amountInput) { amountInput.value = ''; amountInput.disabled = false; amountInput.placeholder = 'ระบุจำนวนเงินที่ต้องการเบิก'; }
+    if (amountLabel) amountLabel.innerHTML = '<i class="fa-solid fa-money-bill-wave me-1 text-success"></i> จำนวนเงินที่ต้องการเบิก';
+    if (submitButton) {
       submitButton.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> บันทึกการเบิกเงิน';
       submitButton.classList.add('btn-primary');
       submitButton.classList.remove('btn-info');
@@ -431,70 +400,51 @@ function onProjectChange() {
 }
 
 function submitTransaction() {
-  if (userRole === 'Viewer') {
-    toastr.error("⚠️ คุณไม่มีสิทธิ์ในการเบิกเงิน");
-    return;
-  }
+  if (userRole === 'Viewer') { toastr.error("⚠️ คุณไม่มีสิทธิ์ในการเบิกเงิน"); return; }
   if (!requireLogin()) return;
 
   const projectCode = document.getElementById('project').value;
   const amountInput = document.getElementById('amount');
+  if (!amountInput) return;
   const amount = parseFloat(amountInput.value);
 
-  if (!projectCode) {
-    toastr.error("⚠️ กรุณาเลือกโครงการก่อนทำรายการ");
-    return;
-  }
-  
-  if (amount === null || amount === undefined || amount < 0) {
-    toastr.error("⚠️ กรุณากรอกจำนวนเงินที่ถูกต้อง");
-    return;
-  }
+  if (!projectCode) { toastr.error("⚠️ กรุณาเลือกโครงการก่อนทำรายการ"); return; }
+  if (amount === null || amount === undefined || amount < 0) { toastr.error("⚠️ กรุณากรอกจำนวนเงินที่ถูกต้อง"); return; }
 
   const project = projects.find(function(p) { return p.code === projectCode; }); 
   const projectName = project ? project.name : '(ไม่ทราบชื่อโครงการ)';
   const budget = parseFloat(project.budget) || 0;
 
   let swalTitle = 'ยืนยันการเบิกเงิน';
-  let swalHtml =
-      '<p><i class="fa-solid fa-diagram-project text-primary me-1"></i> โครงการ: <strong>' + projectName + '</strong></p>' +
-      '<p><i class="fa-solid fa-coins text-warning me-1"></i> จำนวนเงิน: <strong>' + amount.toLocaleString() + '</strong> บาท</p>';
+  let swalHtml = '<p><i class="fa-solid fa-diagram-project text-primary me-1"></i> โครงการ: <strong>' + projectName + '</strong></p><p><i class="fa-solid fa-coins text-warning me-1"></i> จำนวนเงิน: <strong>' + amount.toLocaleString() + '</strong> บาท</p>';
   
   if (budget === 0 && amount === 0) {
     swalTitle = 'ยืนยันการบันทึกรายงาน';
-    swalHtml =
-        '<p><i class="fa-solid fa-diagram-project text-primary me-1"></i> โครงการ: <strong>' + projectName + '</strong></p>' +
-        '<p class="text-info"><i class="fa-solid fa-file-lines me-1"></i> บันทึกรายงานนี้ (ไม่ใช้งบประมาณ)</p>';
+    swalHtml = '<p><i class="fa-solid fa-diagram-project text-primary me-1"></i> โครงการ: <strong>' + projectName + '</strong></p><p class="text-info"><i class="fa-solid fa-file-lines me-1"></i> บันทึกรายงานนี้ (ไม่ใช้งบประมาณ)</p>';
   }
 
-  Swal.fire({
-    title: swalTitle,
-    html: swalHtml,
-    icon: 'question',
-    showCancelButton: true,
-    confirmButtonText: 'ใช่,ยืนยัน',
-    confirmButtonColor: 'var(--success-color)'
-  }).then(function(result) { 
-    if (result.isConfirmed) {
-      loadingStart();
-      callAPI('submitTransaction', { token: authToken, projectCode: projectCode, amount: amount })
-        .then(function(response) { 
-          loadingEnd();
-          if (response.success) {
-            let successTitle = amount === 0 ? 'บันทึกรายงานสำเร็จ!' : 'สำเร็จ!';
-            let successHtml = amount === 0 ? 'ระบบได้สร้างรายการสำหรับแนบไฟล์แล้ว (ยอด 0 บาท)' : response.message + '<br>✅ ครั้งที่เบิก: ' + response.sequence + '<br>💰 ยอดคงเหลือ: ' + Number(response.balance).toLocaleString() + ' บาท';
-            
-            Swal.fire({ icon: 'success', title: successTitle, html: successHtml });
-            onProjectChange(); 
-            loadDataTransactions(); 
-            loadProjectSummary(); 
-          } else {
-            Swal.fire('เกิดข้อผิดพลาด!', response.message, 'error');
-          }
-        })
-        .catch(onFailure);
-    }
-  });
+  Swal.fire({ title: swalTitle, html: swalHtml, icon: 'question', showCancelButton: true, confirmButtonText: 'ใช่,ยืนยัน', confirmButtonColor: 'var(--success-color)' })
+    .then(function(result) { 
+      if (result.isConfirmed) {
+        loadingStart();
+        callAPI('submitTransaction', { token: authToken, projectCode: projectCode, amount: amount })
+          .then(function(response) { 
+            loadingEnd();
+            if (response.success) {
+              let successTitle = amount === 0 ? 'บันทึกรายงานสำเร็จ!' : 'สำเร็จ!';
+              let successHtml = amount === 0 ? 'ระบบได้สร้างรายการสำหรับแนบไฟล์แล้ว (ยอด 0 บาท)' : response.message + '<br>✅ ครั้งที่เบิก: ' + response.sequence + '<br>💰 ยอดคงเหลือ: ' + Number(response.balance).toLocaleString() + ' บาท';
+              
+              Swal.fire({ icon: 'success', title: successTitle, html: successHtml });
+              onProjectChange(); 
+              loadDataTransactions(); 
+              loadProjectSummary(); 
+            } else {
+              Swal.fire('เกิดข้อผิดพลาด!', response.message, 'error');
+            }
+          })
+          .catch(onFailure);
+      }
+    });
 }
 
 function requireLogin() {
@@ -651,20 +601,24 @@ function loadProjectSummary() {
         summaryData = res.data; 
 
         const filterSelect = document.getElementById('filterProject');
-        const currentProjectVal = filterSelect.value; 
+        const currentProjectVal = filterSelect ? filterSelect.value : ''; 
         const filterStatusSelect = document.getElementById('filterStatus');
-        const currentStatusVal = filterStatusSelect.value; 
+        const currentStatusVal = filterStatusSelect ? filterStatusSelect.value : ''; 
 
-        filterSelect.innerHTML = '<option value="">-- แสดงทั้งหมด --</option>';
-        summaryData.forEach(function(item) { 
-          const opt = document.createElement('option');
-          opt.value = item.code;
-          opt.textContent = item.code + ' - ' + item.name; 
-          filterSelect.appendChild(opt);
-        });
+        if (filterSelect) {
+          filterSelect.innerHTML = '<option value="">-- แสดงทั้งหมด --</option>';
+          summaryData.forEach(function(item) { 
+            const opt = document.createElement('option');
+            opt.value = item.code;
+            opt.textContent = item.code + ' - ' + item.name; 
+            filterSelect.appendChild(opt);
+          });
+          filterSelect.value = currentProjectVal;
+        }
         
-        filterSelect.value = currentProjectVal;
-        filterStatusSelect.value = currentStatusVal;
+        if (filterStatusSelect) {
+          filterStatusSelect.value = currentStatusVal;
+        }
 
         filterSummaryTable(); 
         onProjectChange();
@@ -679,8 +633,12 @@ function loadProjectSummary() {
 }
 
 function filterSummaryTable() {
-  const selectedCode = document.getElementById('filterProject').value;
-  const selectedStatus = document.getElementById('filterStatus').value;
+  const filterProjectEl = document.getElementById('filterProject');
+  const filterStatusEl = document.getElementById('filterStatus');
+  
+  const selectedCode = filterProjectEl ? filterProjectEl.value : '';
+  const selectedStatus = filterStatusEl ? filterStatusEl.value : '';
+  
   let filteredData = summaryData;
 
   if (selectedCode) filteredData = filteredData.filter(function(item) { return item.code === selectedCode; });
@@ -701,6 +659,7 @@ function renderSummaryTable(data) {
   if ($.fn.DataTable.isDataTable(tableId)) $(tableId).DataTable().destroy();
 
   const tbody = document.querySelector(tableId + ' tbody'); 
+  if (!tbody) return;
   tbody.innerHTML = ''; 
 
   if (!data || data.length === 0) {
@@ -728,10 +687,15 @@ function renderSummaryDashboard(data) {
     else totalNotStarted++;
   });
 
-  document.getElementById('totalProjects').textContent = totalProjects;
-  document.getElementById('totalCompleted').textContent = totalCompleted;
-  document.getElementById('totalInProgress').textContent = totalInProgress;
-  document.getElementById('totalNotStarted').textContent = totalNotStarted;
+  const tp = document.getElementById('totalProjects');
+  const tc = document.getElementById('totalCompleted');
+  const ti = document.getElementById('totalInProgress');
+  const tn = document.getElementById('totalNotStarted');
+
+  if (tp) tp.textContent = totalProjects;
+  if (tc) tc.textContent = totalCompleted;
+  if (ti) ti.textContent = totalInProgress;
+  if (tn) tn.textContent = totalNotStarted;
 }
 
 function renderAdminDashboard(data) {
@@ -753,10 +717,15 @@ function renderAdminDashboard(data) {
   const utilization = totalBudget > 0 ? (totalUsed / totalBudget) * 100 : 0;
   const fmt = new Intl.NumberFormat('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   
-  document.getElementById('dash-total-budget').textContent = fmt.format(totalBudget);
-  document.getElementById('dash-total-used').textContent = fmt.format(totalUsed);
-  document.getElementById('dash-total-balance').textContent = fmt.format(totalBalance);
-  document.getElementById('dash-utilization').textContent = utilization.toFixed(2);
+  const dtb = document.getElementById('dash-total-budget');
+  const dtu = document.getElementById('dash-total-used');
+  const dtbl = document.getElementById('dash-total-balance');
+  const dutil = document.getElementById('dash-utilization');
+
+  if (dtb) dtb.textContent = fmt.format(totalBudget);
+  if (dtu) dtu.textContent = fmt.format(totalUsed);
+  if (dtbl) dtbl.textContent = fmt.format(totalBalance);
+  if (dutil) dutil.textContent = utilization.toFixed(2);
   
   const progressBar = document.getElementById('dash-progress-bar');
   if (progressBar) {
@@ -807,9 +776,13 @@ function openUploadModal(txId) {
   stagedUploads = [];
   stagedDeletions = [];
   
-  document.getElementById('uploadTxId').value = txId;
-  document.getElementById('uploadTxIdDisplay').textContent = txId;
-  document.getElementById('uploadTxProjectName').textContent = 'กำลังโหลด...';
+  const utx = document.getElementById('uploadTxId');
+  const utxd = document.getElementById('uploadTxIdDisplay');
+  const utxpn = document.getElementById('uploadTxProjectName');
+
+  if (utx) utx.value = txId;
+  if (utxd) utxd.textContent = txId;
+  if (utxpn) utxpn.textContent = 'กำลังโหลด...';
   document.getElementById('preview-receipts').innerHTML = '';
   document.getElementById('preview-reports').innerHTML = '';
 
@@ -821,7 +794,7 @@ function openUploadModal(txId) {
       loadingEnd();
       if (!tx) { uploadModal.hide(); Swal.fire('ผิดพลาด', 'ไม่พบ Transaction', 'error'); return; }
 
-      document.getElementById('uploadTxProjectName').textContent = tx.projectCode + ' - ' + tx.projectName; 
+      if (utxpn) utxpn.textContent = tx.projectCode + ' - ' + tx.projectName; 
 
       if (tx.receipts) {
         try { JSON.parse(tx.receipts).forEach(function(id) { renderThumbnail(id, id, 'receipts', false, true, ''); }); } catch (e) { }
@@ -846,14 +819,16 @@ function setupDropzones() {
       if (uploadMode === 'edit' && e.dataTransfer.files) processFiles(e.dataTransfer.files, fileType);
     });
     zone.addEventListener('click', function() { 
-      if (uploadMode === 'edit') { fileUploader.dataset.fileType = fileType; fileUploader.click(); }
+      if (uploadMode === 'edit' && fileUploader) { fileUploader.dataset.fileType = fileType; fileUploader.click(); }
     });
   });
 
-  fileUploader.addEventListener('change', function(e) { 
-    if (uploadMode === 'edit' && e.target.files) processFiles(e.target.files, e.target.dataset.fileType);
-    e.target.value = null; 
-  });
+  if (fileUploader) {
+    fileUploader.addEventListener('change', function(e) { 
+      if (uploadMode === 'edit' && e.target.files) processFiles(e.target.files, e.target.dataset.fileType);
+      e.target.value = null; 
+    });
+  }
 }
 
 function processFiles(files, fileType) {
@@ -870,6 +845,7 @@ async function stageFileForUpload(file, fileType) {
     const tempId = 'temp-' + Date.now() + '-' + Math.random();
     const isImage = file.type.startsWith('image/');
     const thumbEl = renderThumbnail(tempId, file.name, fileType, true, isImage, ''); 
+    if (!thumbEl) return;
     
     const loadingDiv = document.createElement('div');
     loadingDiv.className = 'thumbnail-loading';
@@ -932,6 +908,7 @@ function saveFileChangesClient() {
 
 function renderThumbnail(fileId, fileName, fileType, isStaged, isImage, previewUrl) {
     const container = document.getElementById('preview-' + fileType); 
+    if (!container) return null;
     const thumb = document.createElement('div');
     thumb.className = 'thumbnail';
     thumb.dataset.fileId = fileId; thumb.dataset.fileType = fileType; thumb.dataset.isStaged = isStaged; 
